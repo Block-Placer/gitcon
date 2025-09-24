@@ -28,8 +28,17 @@
 
 <header>Crafty Web Console</header>
 
-<div class="container">
+<!-- LOGIN FORM -->
+<div id="login" class="card" style="max-width:400px;margin:40px auto;">
+  <h2>Login</h2>
+  <input type="text" id="username" placeholder="Crafty Username">
+  <input type="password" id="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <p id="loginMsg" style="color:#f55;"></p>
+</div>
 
+<!-- PANEL -->
+<div id="panel" class="container" style="display:none;">
   <div class="card">
     <h2>Server Control</h2>
     <p>Status: <span id="status">Loading...</span></p>
@@ -49,26 +58,51 @@
     <input type="text" id="command" placeholder="Enter Minecraft command">
     <button onclick="sendCommand()">Send Command</button>
   </div>
-
 </div>
 
 <script>
-  // ========== CONFIG ==========
-  const apiUrl = "https://panel.blockservers.net/api"; // replace with your Crafty API URL
-  const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJpYXQiOjE3NTg3MTE0NTMsInRva2VuX2lkIjoyfQ.bSDqgtf_7B8s-G2V0ar5aIQgWP9XhdSGv-ZBo0UR_ew"; 
+  // ================= CONFIG =================
+  const apiUrl = "https://panel.blockservers.net/api"; // Crafty API URL
   const serverId = 1; // usually 1 if only one server
-  // =============================
+  let token = null;    // JWT token after login
+  // =========================================
+
+  async function login() {
+    const user = document.getElementById("username").value;
+    const pass = document.getElementById("password").value;
+    if(!user || !pass){ document.getElementById("loginMsg").innerText="Enter username & password"; return; }
+
+    try {
+      const res = await fetch(`${apiUrl}/auth/login`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({username:user,password:pass})
+      });
+      if(!res.ok) throw new Error("Login failed");
+      const data = await res.json();
+      token = data.token;
+      document.getElementById("login").style.display = "none";
+      document.getElementById("panel").style.display = "flex";
+      fetchStatus();
+      fetchLogs();
+      setInterval(fetchStatus,10000);
+      setInterval(fetchLogs,2000);
+    } catch(e) {
+      document.getElementById("loginMsg").innerText="❌ Invalid credentials";
+      console.error(e);
+    }
+  }
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`${apiUrl}/servers`, { headers: { "Authorization": `Bearer ${token}` }});
+      const res = await fetch(`${apiUrl}/servers`,{ headers:{ "Authorization":`Bearer ${token}` }});
       const data = await res.json();
       const server = data.servers[0];
       document.getElementById("status").innerText = server.running ? "✅ Online" : "❌ Offline";
       updatePlayers(server.players);
-    } catch(e) {
-      console.error(e);
+    } catch(e){
       document.getElementById("status").innerText = "⚠️ Error fetching status";
+      console.error(e);
     }
   }
 
@@ -76,26 +110,20 @@
     const list = document.getElementById("players");
     list.innerHTML = "";
     if(players.length){
-      players.forEach(p => {
-        const li = document.createElement("li");
-        li.innerText = p;
-        list.appendChild(li);
-      });
-    } else {
-      list.innerHTML = "<li>No players online</li>";
-    }
+      players.forEach(p=>{ const li=document.createElement("li"); li.innerText=p; list.appendChild(li); });
+    } else list.innerHTML = "<li>No players online</li>";
   }
 
   async function sendAction(action){
     try {
-      await fetch(`${apiUrl}/servers/${serverId}/${action}`, { method:"POST", headers:{ "Authorization": `Bearer ${token}` }});
+      await fetch(`${apiUrl}/servers/${serverId}/${action}`,{ method:"POST", headers:{ "Authorization":`Bearer ${token}` }});
       fetchStatus();
     } catch(e){ console.error(e); }
   }
 
-  async function fetchLogs() {
+  async function fetchLogs(){
     try {
-      const res = await fetch(`${apiUrl}/servers/${serverId}/logs`, { headers:{ "Authorization": `Bearer ${token}` }});
+      const res = await fetch(`${apiUrl}/servers/${serverId}/logs`,{ headers:{ "Authorization":`Bearer ${token}` }});
       const data = await res.json();
       const consoleEl = document.getElementById("console");
       consoleEl.innerText = data.logs.join("\n");
@@ -107,20 +135,15 @@
     const cmd = document.getElementById("command").value;
     if(!cmd) return;
     try {
-      await fetch(`${apiUrl}/servers/${serverId}/command`, {
+      await fetch(`${apiUrl}/servers/${serverId}/command`,{
         method:"POST",
-        headers:{ "Authorization": `Bearer ${token}`, "Content-Type":"application/json" },
-        body: JSON.stringify({ command: cmd })
+        headers:{ "Authorization":`Bearer ${token}`,"Content-Type":"application/json" },
+        body: JSON.stringify({command:cmd})
       });
       document.getElementById("command").value = "";
       fetchLogs();
     } catch(e){ console.error(e); }
   }
-
-  fetchStatus();
-  fetchLogs();
-  setInterval(fetchStatus, 10000);
-  setInterval(fetchLogs, 2000);
 </script>
 
 </body>
